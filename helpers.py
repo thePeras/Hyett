@@ -18,6 +18,7 @@ def apply_code_changes(repo_path, gemini_response):
         
         content_to_write = content.strip()
         
+        # TODO: this is not working for ```dart
         # If the AI includes markdown fences like ```dart, strip them.
         match = re.match(r"```(?:\w+)?\n(.*?)\n```$", content_to_write, re.DOTALL)
         if match:
@@ -30,7 +31,7 @@ def apply_code_changes(repo_path, gemini_response):
     #TODO: Format changed files
 
 def get_code_ingest():
-    log("   - Running 'gitingest' to create code digest...")
+    log("Running 'gitingest' to create code digest...")
     subprocess.run(
         ["gitingest"], 
         cwd=DIGEST_DIR, 
@@ -44,7 +45,7 @@ def get_code_ingest():
         print("⚠️ 'digest.txt' not found. Cannot proceed with code context.")
         raise FileNotFoundError("The digest.txt file was not created by gitingest.")
     
-    log("   - Ingested code from the '/lib' directory.")
+    log("Ingested code from the '/lib' directory.")
 
     with open(digest_path, 'r', encoding='utf-8') as f:
         return f.read()

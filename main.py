@@ -4,16 +4,15 @@ import hmac
 import hashlib
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
-from workflows import issue_assign, pr_review
+from workflows.issue_assign import handle_issue_assigned
+from workflows.pr_review import handle_pr_review
 
-# Create a FastAPI app
 app = FastAPI()
 
 @app.post("/webhook")
 async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         # TODO: Request signature verification
-
 
         # Handle the webhook event
         payload = await request.json()
@@ -23,8 +22,8 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
             if payload.get("assignee", {}).get("login") != MY_USERNAME:
                 return
 
-            print("1️⃣✅ I have been assigned to an issue. Let's work baby!")
-            background_tasks.add_task(issue_assign, payload)
+            print("1 - ✅ I have been assigned to an issue. Let's work baby!")
+            background_tasks.add_task(handle_issue_assigned, payload)
 
         if event == "pull_request_review" and payload.get("action") == "submitted":
             review = payload["review"]
@@ -34,8 +33,8 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
             if not (review["state"] == "changes_requested" and review["user"]["login"] == MY_USERNAME):
                 return
 
-            print("2️⃣✅ PR review submitted. Let's handle it!")
-            background_tasks.add_task(pr_review, payload)
+            print("2 - ✅ PR review submitted. Let's handle it!")
+            background_tasks.add_task(handle_pr_review, payload)
 
         return {"status": "ok", "event_received": event}
     except Exception as e:
