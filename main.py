@@ -1,7 +1,8 @@
-from configs import MY_USERNAME
 import os
 import hmac
 import hashlib
+
+from configs import MY_USERNAME, GITHUB_WEBHOOK_SECRET
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
 from workflows.issue_assign import handle_issue_assigned
@@ -12,7 +13,18 @@ app = FastAPI()
 @app.post("/webhook")
 async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
-        # TODO: Request signature verification
+        signature_header = request.headers.get('X-Hub-Signature-256')
+        if not signature_header:
+            raise HTTPException(status_code=403, detail="X-Hub-Signature-256 header is missing!")
+
+        body = await request.body()
+        hash_object = hmac.new(GITHUB_WEBHOOK_SECRET, msg=body, digestmod=hashlib.sha256)
+        expected_signature = "sha256=" + hash_object.hexdigest()
+
+        if not hmac.compare_digest(expected_signature, signature_header):
+            raise HTTPException(status_code=403, detail="Request signature does not match!")
+
+        return {"status": "ok", "event_received": "webhook received"}
 
         # Handle the webhook event
         payload = await request.json()
@@ -29,11 +41,14 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
             review = payload["review"]
             pr = payload["pull_request"]
 
-            # TODO: check if the owner of the PR is the bot
-            if not (review["state"] == "changes_requested" and review["user"]["login"] == MY_USERNAME):
+            is_my_pr = pr.get("user", {}).get("login") == MY_USERNAME
+            is_change_request = review.get("state") == "changes_requested"
+            request_from_owner = review.get("user", {}).get("login") == MY_USERNAME
+            
+            if not (is_my_pr and is_change_request and request_from_owner):
                 return
 
-            print("2 - ✅ PR review submitted. Let's handle it!")
+            print("2 - ✅ A PR review received. Let's handle it!")
             background_tasks.add_task(handle_pr_review, payload)
 
         return {"status": "ok", "event_received": event}
