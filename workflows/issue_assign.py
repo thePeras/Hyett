@@ -59,7 +59,7 @@ def handle_issue_assigned(payload):
             log("No changes were applied. Aborting PR creation.")
             return
 
-        diff = repo.git.diff(repo.head.commit.tree, untracked_files=True)
+        diff = repo.git.diff('HEAD')
 
         # Ask PR details based on the diff
         pr_details_prompt = f"""
@@ -117,7 +117,7 @@ def handle_issue_assigned(payload):
         log(f"Created and checked out new branch: {branch_name}")
 
         repo.git.add(A=True)
-        repo.index.commit(pr_title)
+        repo.index.commit(commit_message)
         
         push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
         origin = repo.remote(name='origin')

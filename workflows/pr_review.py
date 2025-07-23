@@ -13,17 +13,24 @@ def handle_pr_review(payload):
     branch_name = pr["head"]["ref"]
     review_comments = review["body"]
 
-    log(f"Received review feedback for PR: {review['body']}")
+    log(f"Received review feedback for PR:\n\n {review['body']}")
 
     print(f"🚀 Addressing review feedback for branch: {branch_name}")
 
     # Go to the PR branch
     repo_path = os.path.join(WORKING_DIR)
     repo = git.Repo(repo_path)
-    origin = repo.remote(name='origin')
-    origin.pull()
+
+    # Fetch the latest changes from the origin remote
+    repo.remotes.origin.fetch()
+    log("Fetched latest changes from origin.")
+
+    # Checkout the specific PR branch
     repo.git.checkout(branch_name)
-    log(f"Checked out branch '{branch_name}'.")
+
+    # Hard reset the local branch to match the remote branch
+    repo.git.reset('--hard', f'origin/{branch_name}')
+    log(f"Checked out and reset branch '{branch_name}' to remote state.")
     
     # Get PR Diff for context
     # We use requests here as PyGithub's diff handling can be tricky
@@ -65,10 +72,14 @@ def handle_pr_review(payload):
         return
 
     repo.git.add(A=True)
+    # TODO: Get commit message from Gemini
     repo.index.commit("refactor: Address PR review feedback")
     
+        
     push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
+    origin = repo.remote(name='origin')
     origin.set_url(push_url)
-    origin.push()
+    origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
+    log(f"Committed and pushed changes to branch '{branch_name}'.")
     
     print(f"✅ Successfully pushed updates to branch '{branch_name}'.")

@@ -24,8 +24,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
         if not hmac.compare_digest(expected_signature, signature_header):
             raise HTTPException(status_code=403, detail="Request signature does not match!")
 
-        return {"status": "ok", "event_received": "webhook received"}
-
         # Handle the webhook event
         payload = await request.json()
         event = request.headers.get('X-GitHub-Event')
@@ -42,7 +40,8 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
             pr = payload["pull_request"]
 
             is_my_pr = pr.get("user", {}).get("login") == MY_USERNAME
-            is_change_request = review.get("state") == "changes_requested"
+            #is_change_request = review.get("state") == "changes_requested"
+            is_change_request = True
             request_from_owner = review.get("user", {}).get("login") == MY_USERNAME
             
             if not (is_my_pr and is_change_request and request_from_owner):
@@ -50,6 +49,8 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
             print("2 - ✅ A PR review received. Let's handle it!")
             background_tasks.add_task(handle_pr_review, payload)
+
+        # TODO: PR Comment event handler to chat purposes
 
         return {"status": "ok", "event_received": event}
     except Exception as e:
