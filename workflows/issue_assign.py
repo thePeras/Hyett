@@ -1,7 +1,8 @@
 from helpers import log
 import os
 import git
-import requests
+import re
+import json
 
 from configs import WORKING_DIR, GITHUB_TOKEN, model, g
 from helpers import apply_code_changes, get_code_ingest
@@ -17,7 +18,6 @@ def handle_issue_assigned(payload):
 
         print(f"🚀 Starting work on issue #{issue_number}: {issue_title}")
 
-        # Clone Repo and Create Branch
         repo_path = os.path.join(WORKING_DIR)
         if os.path.exists(repo_path):
             repo = git.Repo(repo_path)
@@ -25,22 +25,13 @@ def handle_issue_assigned(payload):
             repo.remotes.origin.pull()
         else:
             repo = git.Repo.clone_from(repo_clone_url, repo_path)
-        
-        # TODO: better branch name
-        branch_name = f"fix/issue-{issue_number}"
-        if branch_name in repo.heads:
-            repo.delete_head(branch_name, '-D') # Delete old branch if it exists
-        new_branch = repo.create_head(branch_name, 'origin/main') # Base off main
-        new_branch.checkout()
-        log(f"Cloned repo and created new branch: {branch_name}")
+        log("Pulled latest changes from 'main' branch.")
 
-        # Ingest code from the '/lib' folder
-        lib_path = os.path.join(repo_path, 'lib')
-
+        # Ingest code from the '/lib' folder for context
         code_context = get_code_ingest()
 
-        # Request Changes from Gemini
-        prompt = f"""
+        # Request Code Changes from Gemini
+        code_gen_prompt = f"""
         You are an expert software developer tasked with fixing a GitHub issue.
         Analyze the issue description and the provided code from the project's 'lib' folder.
         Generate the necessary code changes to resolve the issue.
@@ -58,35 +49,86 @@ def handle_issue_assigned(payload):
         {code_context}
         """
         
-        log("Sending request to Gemini...")
-        response = model.generate_content(prompt)
+        log("Sending request to Gemini for code generation...")
+        response = model.generate_content(code_gen_prompt)
         
-        log("Received response from Gemini. Applying changes...")
+        log("Received response from Gemini. Applying changes to main branch locally...")
         apply_code_changes(repo_path, response.text)
         
         if not repo.is_dirty(untracked_files=True):
             log("No changes were applied. Aborting PR creation.")
             return
 
+        diff = repo.git.diff(repo.head.commit.tree, untracked_files=True)
+
+        # Ask PR details based on the diff
+        pr_details_prompt = f"""
+        Based on the following code changes (diff) and the original issue title, please provide:
+        1. A descriptive git branch name.
+        2. A concise Pull Request title.
+        3. A commit message that summarizes the changes.
+        4. A short, well-written Pull Request description.
+
+        **GitHub Issue Title:** {issue_title}
+
+        **Code Diff:**
+        ```diff
+        {diff}
+        ```
+
+        **Response Format:**
+        Your response must be a single JSON object with the keys "branch_name", "pr_title", "commit_message", and "pr_description". Do not add any other text or markdown formatting.
+        Example:
+        {{
+          "branch_name": "feat/add-user-authentication",
+          "pr_title": "Feat: Implement user authentication",
+          "commit_message": "Implement user authentication",
+          "pr_description": "This PR introduces user authentication, addressing issue #{issue_number}. It adds the necessary models, routes, and services for user sign-up and login."
+        }}
+        """
+        log("Sending request to Gemini for branch name, PR title, and description...")
+        details_response = model.generate_content(pr_details_prompt)
+
+        try:
+            json_match = re.search(r"\{.*\}", details_response.text, re.DOTALL)
+            if not json_match:
+                raise ValueError("No JSON object found in Gemini's response for PR details.")
+            pr_details = json.loads(json_match.group(0))
+            branch_name = pr_details["branch_name"]
+            pr_title = pr_details["pr_title"]
+            pr_description = pr_details["pr_description"]
+            commit_message = pr_details.get("commit_message", pr_title)
+            log(f"Received PR details from Gemini. Branch: {branch_name}")
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            log(f"Error parsing Gemini's response for PR details: {e}. Using defaults.")
+            branch_name = f"fix/issue-{issue_number}"
+            pr_title = f"Fix: {issue_title}"
+            commit_message = f"Fix issue #{issue_number}: {issue_title}"
+            pr_description = f"Closes #{issue_number}"
+
+        pr_description = f"Closes #{issue_number}\n\n{pr_description}"
+        # TODO: use a image badge
+        pr_description = f"{pr_description}\n\n*Created by [Hyett](https://github.com/theperas/hyett).*"
+
+        if branch_name in repo.heads:
+            repo.delete_head(branch_name, '-D') # Delete old branch if it exists
+        new_branch = repo.create_head(branch_name)
+        new_branch.checkout()
+        log(f"Created and checked out new branch: {branch_name}")
+
         repo.git.add(A=True)
-        # TODO: better commit message
-        repo.index.commit(f"feat: Fix for issue #{issue_number}")
+        repo.index.commit(pr_title)
         
-        # Use token for push authentication
         push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
         origin = repo.remote(name='origin')
         origin.set_url(push_url)
         origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
-        print(f"   - Committed and pushed changes to branch '{branch_name}'.")
+        log(f"Committed and pushed changes to branch '{branch_name}'.")
 
         gh_repo = g.get_repo(repo_full_name)
-        # TODO: better PR description with diff changes
-        # TODO: need to have Closes #
-        # TODO: pr created by Hyett
-        pr_body = f"This PR is an AI-generated solution for issue #{issue_number}.\n\n**Issue:** {issue_title}\n\n*Please review the changes carefully before merging.*"
         pr = gh_repo.create_pull(
-            title=f"Fix: {issue_title}",
-            body=pr_body,
+            title=pr_title,
+            body=pr_description,
             head=branch_name,
             base="main"
         )
