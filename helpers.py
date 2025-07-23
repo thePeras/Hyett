@@ -12,23 +12,57 @@ def apply_code_changes(repo_path, gemini_response):
         print("⚠️ No file changes found in the Gemini response.")
         return
 
+    changed_files = []
     for file_path, content in file_changes:
         full_path = os.path.join(repo_path, file_path.strip())
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
         content_to_write = content.strip()
         
-        # TODO: this is not working for ```dart
-        # If the AI includes markdown fences like ```dart, strip them.
         match = re.match(r"```(?:\w+)?\n(.*?)\n```$", content_to_write, re.DOTALL)
         if match:
             content_to_write = match.group(1)
 
-        with open(full_path, 'w') as f:
+        # Write the new content to the file
+        with open(full_path, 'w', encoding='utf-8') as f:
             f.write(content_to_write)
-        print(f"   - Updated {full_path}")
+        
+        log(f"Updated {file_path}")
+        changed_files.append(full_path)
+
+    format_changed_files(repo_path, changed_files)
+
+def format_changed_files(repo_path, files):
+
+    if not files:
+        return
+
+    log("Formatting changed files...")
     
-    #TODO: Format changed files
+    files_by_ext = {}
+    for f in files:
+        ext = os.path.splitext(f)[1]
+        if ext not in files_by_ext:
+            files_by_ext[ext] = []
+        files_by_ext[ext].append(f)
+
+    # Dart Files
+    if '.dart' in files_by_ext:
+        dart_files = files_by_ext['.dart']
+        command = ["dart", "format"] + dart_files
+        result = subprocess.run(
+            command,
+            cwd=repo_path, 
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+        # TODO: better logging
+        if result.stdout:
+            print(result.stdout.strip())
+    
+    # TODO: Add support for other file types and their respective formatters
 
 def get_code_ingest():
     log("Running 'gitingest' to create code digest...")

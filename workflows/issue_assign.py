@@ -81,6 +81,8 @@ def handle_issue_assigned(payload):
 
         gh_repo = g.get_repo(repo_full_name)
         # TODO: better PR description with diff changes
+        # TODO: need to have Closes #
+        # TODO: pr created by Hyett
         pr_body = f"This PR is an AI-generated solution for issue #{issue_number}.\n\n**Issue:** {issue_title}\n\n*Please review the changes carefully before merging.*"
         pr = gh_repo.create_pull(
             title=f"Fix: {issue_title}",
