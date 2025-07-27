@@ -1,11 +1,10 @@
 from helpers import log
 import os
-import git
 import re
 import json
 
 from configs import WORKING_DIR, GITHUB_TOKEN, model, g
-from helpers import apply_code_changes, get_code_ingest
+from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes
 
 # --- Workflow 1: Handle New Issue Assignment ---
 def handle_issue_assigned(payload):
@@ -18,16 +17,7 @@ def handle_issue_assigned(payload):
 
         print(f"🚀 Starting work on issue #{issue_number}: {issue_title}")
 
-        repo_path = os.path.join(WORKING_DIR)
-        if os.path.exists(repo_path):
-            repo = git.Repo(repo_path)
-            repo.git.checkout('main')
-            repo.remotes.origin.pull()
-        else:
-            repo = git.Repo.clone_from(repo_clone_url, repo_path)
-        log("Pulled latest changes from 'main' branch.")
-
-        # Ingest code from the '/lib' folder for context
+        repo_path, repo = get_updated_repo(repo_clone_url)
         code_context = get_code_ingest()
 
         # Request Code Changes from Gemini
@@ -36,16 +26,13 @@ def handle_issue_assigned(payload):
         Analyze the issue description and the provided code from the project's 'lib' folder.
         Generate the necessary code changes to resolve the issue.
 
-        IMPORTANT: Provide the full, updated content for each file that needs to be changed. Your response MUST strictly follow this format, including the start and end markers:
-        --- START OF FILE: lib/path/to/your/file.dart ---
-        <<updated content of file.dart>>
-        --- END OF FILE: lib/path/to/your/file.dart ---
+        {CODE_FORMAT}
 
         ## GITHUB ISSUE:
         - **Title:** {issue_title}
         - **Description:** {issue_body}
 
-        ## CODE FROM '/lib' FOLDER:
+        ## CODE:
         {code_context}
         """
         
@@ -111,20 +98,17 @@ def handle_issue_assigned(payload):
         pr_description = f"{pr_description}\n\n*Created by [Hyett](https://github.com/theperas/hyett).*"
 
         if branch_name in repo.heads:
-            repo.delete_head(branch_name, '-D') # Delete old branch if it exists
+            repo.delete_head(branch_name, '-D')
         new_branch = repo.create_head(branch_name)
         new_branch.checkout()
         log(f"Created and checked out new branch: {branch_name}")
 
         repo.git.add(A=True)
         repo.index.commit(commit_message)
-        
-        push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
-        origin = repo.remote(name='origin')
-        origin.set_url(push_url)
-        origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
-        log(f"Committed and pushed changes to branch '{branch_name}'.")
 
+        push_code_changes(repo, branch_name, repo_clone_url)
+    
+        # TODO: Why not using repo var?
         gh_repo = g.get_repo(repo_full_name)
         pr = gh_repo.create_pull(
             title=pr_title,

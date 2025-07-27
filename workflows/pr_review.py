@@ -3,12 +3,11 @@ import requests
 import git
 
 from configs import model, WORKING_DIR, GITHUB_TOKEN
-from helpers import apply_code_changes, get_code_ingest, log
+from helpers import apply_code_changes, get_code_ingest, log, get_updated_repo, CODE_FORMAT, push_code_changes
 
 def handle_pr_review(payload):
     review = payload["review"]
     pr = payload["pull_request"]
-
     repo_clone_url = payload["repository"]["clone_url"]
     branch_name = pr["head"]["ref"]
     review_comments = review["body"]
@@ -18,8 +17,7 @@ def handle_pr_review(payload):
     print(f"🚀 Addressing review feedback for branch: {branch_name}")
 
     # Go to the PR branch
-    repo_path = os.path.join(WORKING_DIR)
-    repo = git.Repo(repo_path)
+    repo_path, repo = get_updated_repo(repo_clone_url)
 
     # Fetch the latest changes from the origin remote
     repo.remotes.origin.fetch()
@@ -33,7 +31,6 @@ def handle_pr_review(payload):
     log(f"Checked out and reset branch '{branch_name}' to remote state.")
     
     # Get PR Diff for context
-    # We use requests here as PyGithub's diff handling can be tricky
     diff_url = pr["diff_url"]
     diff_response = requests.get(diff_url)
     pr_diff = diff_response.text
@@ -44,10 +41,7 @@ def handle_pr_review(payload):
     You are an expert software developer revising a pull request based on feedback.
     Analyze the review comments and the provided PR diff. Generate the necessary code changes to address the feedback.
 
-    IMPORTANT: Provide the full, updated content for each file that needs to be changed, using the same strict format as before:
-    --- START OF FILE: lib/path/to/your/file.dart ---
-    <<updated content of file.dart>>
-    --- END OF FILE: lib/path/to/your/file.dart ---
+    {CODE_FORMAT}
 
     ## REVIEW FEEDBACK:
     {review_comments}
@@ -57,7 +51,7 @@ def handle_pr_review(payload):
     {pr_diff}
     ```
 
-    ## CODE FROM '/lib' FOLDER:
+    ## CODE:
     {get_code_ingest()}
 
     """
@@ -75,11 +69,6 @@ def handle_pr_review(payload):
     # TODO: Get commit message from Gemini
     repo.index.commit("refactor: Address PR review feedback")
     
-        
-    push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
-    origin = repo.remote(name='origin')
-    origin.set_url(push_url)
-    origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
-    log(f"Committed and pushed changes to branch '{branch_name}'.")
-    
-    print(f"✅ Successfully pushed updates to branch '{branch_name}'.")
+    push_code_changes(repo, branch_name, repo_clone_url)
+
+    print(f"✅ Successfully reviewed code")

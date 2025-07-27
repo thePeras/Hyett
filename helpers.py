@@ -1,8 +1,16 @@
 import os
 import re
 import subprocess
+import git
 
-from configs import model, WORKING_DIR, DIGEST_DIR
+from configs import model, WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN
+
+CODE_FORMAT = """
+IMPORTANT: Provide the full, updated content for each file that needs to be changed. Your response MUST strictly follow this format, including the start and end markers:
+--- START OF FILE: lib/path/to/your/file.dart ---
+<<updated content of file.dart>>
+--- END OF FILE: lib/path/to/your/file.dart ---
+"""
 
 def apply_code_changes(repo_path, gemini_response):
     print("🤖 Applying code changes from Gemini...")
@@ -83,6 +91,26 @@ def get_code_ingest():
 
     with open(digest_path, 'r', encoding='utf-8') as f:
         return f.read()
+
+def get_updated_repo(repo_clone_url):
+    repo_path = os.path.join(WORKING_DIR)
+    if os.path.exists(repo_path):
+        repo = git.Repo(repo_path)
+        repo.git.checkout('main')
+        repo.remotes.origin.pull()
+    else:
+        repo = git.Repo.clone_from(repo_clone_url, repo_path)
+    
+    log("Pulled latest changes from 'main' branch.")
+    return repo_path, repo
+
+def push_code_changes(repo, branch_name, repo_clone_url):
+    push_url = repo_clone_url.replace("https://", f"https://x-access-token:{GITHUB_TOKEN}@")
+    origin = repo.remote(name='origin')
+    origin.set_url(push_url)
+    origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
+    log(f"Committed and pushed changes to branch '{branch_name}'.")
+
 
 def log(mylog):
     print("    - " + mylog)
