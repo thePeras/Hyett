@@ -1,0 +1,16 @@
+# Server
+fastapi
+uvicorn[standard]
+
+# Environment & Configuration
+python-dotenv
+
+# API Clients & SDKs
+google-generativeai
+PyGithub
+requests
+
+# Git Automation
+GitPython
+
+gitingest
