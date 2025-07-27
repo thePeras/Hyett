@@ -169,6 +169,32 @@ def fetch_image_from_url(url, token):
     except requests.exceptions.RequestException as e:
         log(f"Warning: Could not fetch image from {url}. Error: {e}")
         return None, None
-        
+
+def get_pr_template(repo_path):
+    """
+    Checks for a pull request template file and returns its content.
+    Searches in standard GitHub locations: root, .github/, and docs/.
+    """
+    log("Checking for a PR template...")
+    # Standard locations and names for PR templates
+    possible_paths = [
+        os.path.join(repo_path, 'pull_request_template.md'),
+        os.path.join(repo_path, '.github', 'pull_request_template.md'),
+        os.path.join(repo_path, 'docs', 'pull_request_template.md'),
+        os.path.join(repo_path, 'PULL_REQUEST_TEMPLATE.md'),
+        os.path.join(repo_path, '.github', 'PULL_REQUEST_TEMPLATE.md'),
+        os.path.join(repo_path, 'docs', 'PULL_REQUEST_TEMPLATE.md')
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                log(f"Found PR template at: {os.path.relpath(path, repo_path)}")
+                return content
+
+    log("No PR template found.")
+    return None
+
 def log(mylog):
     print("    - " + mylog)
