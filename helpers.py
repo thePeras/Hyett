@@ -2,6 +2,8 @@ import os
 import re
 import subprocess
 import git
+import requests
+import octokit
 
 from configs import model, WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN
 
@@ -111,6 +113,62 @@ def push_code_changes(repo, branch_name, repo_clone_url):
     origin.push(refspec=f'{branch_name}:{branch_name}', force=True)
     log(f"Committed and pushed changes to branch '{branch_name}'.")
 
+def get_issue_attachments(issue_number, repo_full_name):
+    log(f"Fetching attachments for issue #{issue_number} in {repo_full_name}...")
+    owner, repo_name = repo_full_name.split('/')
+    url = f"https://api.github.com/repos/{owner}/{repo_name}/issues/{issue_number}"
 
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.full+json",
+    }
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        html_body = data.get("body_html")
+        if not html_body:
+            return []
+            
+        image_urls = re.findall(r'<img src="([^"]+)"', html_body)
+        if not image_urls:
+            return []
+                  
+        attachments = []
+        for url in image_urls:
+            content_type, image_data = fetch_image_from_url(url, GITHUB_TOKEN)
+            if content_type and image_data:
+                attachments.append({'mime_type': content_type, 'data': image_data})
+        return attachments
+    else:
+        log(f"Failed to fetch issue attachments: {response.status_code}")
+        return []
+
+
+def fetch_image_from_url(url, token):
+
+    """Fetches an image from a URL using a GitHub token and returns its mime type and data."""
+    try:
+        headers = {'Authorization': f'token {token}'}
+        response = requests.get(url, headers=headers, stream=True, timeout=15)
+        response.raise_for_status()
+        
+        content_type = response.headers.get('Content-Type')
+        if not content_type or 'application/octet-stream' in content_type:
+            guessed_type = guess_type(url)[0]
+            if guessed_type:
+                content_type = guessed_type
+        
+        if not content_type or not content_type.startswith('image/'):
+            log(f"Skipping non-image URL: {url} (Content-Type: {content_type})")
+            return None, None
+
+        image_data = response.content
+        log(f"Successfully fetched image from {url}")
+        return content_type, image_data
+    except requests.exceptions.RequestException as e:
+        log(f"Warning: Could not fetch image from {url}. Error: {e}")
+        return None, None
+        
 def log(mylog):
     print("    - " + mylog)

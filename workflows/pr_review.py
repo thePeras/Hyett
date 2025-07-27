@@ -2,7 +2,7 @@ import os
 import requests
 import git
 
-from configs import model, WORKING_DIR, GITHUB_TOKEN
+from configs import model, WORKING_DIR
 from helpers import apply_code_changes, get_code_ingest, log, get_updated_repo, CODE_FORMAT, push_code_changes
 
 def handle_pr_review(payload):
