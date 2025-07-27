@@ -19,6 +19,7 @@ def handle_issue_assigned(payload):
 
         repo_path, repo = get_updated_repo(repo_clone_url)
         code_context = get_code_ingest()
+        pr_template = get_pr_template(repo_path)
 
         # Request Code Changes from Gemini
         code_gen_prompt = f"""
@@ -53,13 +54,25 @@ def handle_issue_assigned(payload):
 
         diff = repo.git.diff('HEAD')
 
+        if pr_template:
+            pr_description_instruction = f"""
+        4. A detailed Pull Request description. IMPORTANT: You must use the following template to structure your description, filling in the relevant sections based on the code changes.
+
+        **PR Template:**
+        ```markdown
+        {pr_template}
+        ```
+        """
+        else:
+            pr_description_instruction = "4. A short, well-written Pull Request description."
+
         # Ask PR details based on the diff
         pr_details_prompt = f"""
         Based on the following code changes (diff) and the original issue title, please provide:
         1. A descriptive git branch name.
         2. A concise Pull Request title.
         3. A commit message that summarizes the changes.
-        4. A short, well-written Pull Request description.
+        {pr_description_instruction}
 
         **GitHub Issue Title:** {issue_title}
 
