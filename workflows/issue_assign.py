@@ -4,7 +4,7 @@ import re
 import json
 
 from configs import WORKING_DIR, GITHUB_TOKEN, model, g
-from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes, fetch_image_from_url, get_issue_attachments
+from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes, fetch_image_from_url, get_issue_attachments, get_pr_template
 
 # --- Workflow 1: Handle New Issue Assignment ---
 def handle_issue_assigned(payload):
