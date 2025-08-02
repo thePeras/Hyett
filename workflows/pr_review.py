@@ -2,9 +2,10 @@ import os
 import requests
 import git
 
-from configs import model, WORKING_DIR
+from configs import gemini_model, flash_model, WORKING_DIR
 from helpers import apply_code_changes, get_code_ingest, log, get_updated_repo, CODE_FORMAT, push_code_changes
 
+# TODO: Check how to address line reviews
 def handle_pr_review(payload):
     review = payload["review"]
     pr = payload["pull_request"]
@@ -57,7 +58,7 @@ def handle_pr_review(payload):
     """
     
     log("Sending revision request to Gemini...")
-    response = model.generate_content(prompt)
+    response = gemini_model.generate_content(prompt)
     
     apply_code_changes(repo_path, response.text)
     
@@ -66,9 +67,26 @@ def handle_pr_review(payload):
         return
 
     repo.git.add(A=True)
-    # TODO: Get commit message from Gemini
-    repo.index.commit("refactor: Address PR review feedback")
-    
+    log("Changes applied from review feedback. Committing changes...")
+
+    diff = repo.git.diff('HEAD')
+    commit_message_prompt = f"""
+        Based on the following code changes (diff) provide **only** a concise and informative **git commit message** that summarizes the changes.
+
+        **Code Diff:**
+        ```diff
+        {diff}
+        ```
+    """
+
+    if flash_model:
+        commit_message = flash_model.generate_content(commit_message_prompt).text.strip()
+    else:
+        commit_message = "Address PR review feedback"
+
+
+    repo.index.commit(commit_message)
+
     push_code_changes(repo, branch_name, repo_clone_url)
 
     print(f"✅ Successfully reviewed code")

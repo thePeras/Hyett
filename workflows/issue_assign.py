@@ -3,7 +3,7 @@ import os
 import re
 import json
 
-from configs import WORKING_DIR, GITHUB_TOKEN, model, g
+from configs import WORKING_DIR, GITHUB_TOKEN, gemini_model, flash_model, g
 from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes, fetch_image_from_url, get_issue_attachments, get_pr_template
 
 # --- Workflow 1: Handle New Issue Assignment ---
@@ -43,7 +43,7 @@ def handle_issue_assigned(payload):
 
         log("Sending request to Gemini for code generation...")
         gemini_request_contents = [code_gen_prompt] + attachments
-        response = model.generate_content(gemini_request_contents)
+        response = gemini_model.generate_content(gemini_request_contents)
 
         log("Received response from Gemini. Applying changes to main branch locally...")
         apply_code_changes(repo_path, response.text)
@@ -92,7 +92,7 @@ def handle_issue_assigned(payload):
         }}
         """
         log("Sending request to Gemini for branch name, PR title, and description...")
-        details_response = model.generate_content(pr_details_prompt)
+        details_response = flash_model.generate_content(pr_details_prompt)
 
         try:
             json_match = re.search(r"\{.*\}", details_response.text, re.DOTALL)

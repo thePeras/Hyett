@@ -15,9 +15,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MY_USERNAME = os.getenv("GITHUB_USERNAME")
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "").encode('utf-8')
 
-WORKING_DIR = "../project_luca"
+WORKING_DIR = "../project_luca/app"
 DIGEST_DIR = os.path.join(WORKING_DIR, 'lib')
 
 g = Github(GITHUB_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-pro')
+gemini_model = genai.GenerativeModel('gemini-2.5-pro')
+flash_model = genai.GenerativeModel('gemini-2.5-flash')
+gemma_model = genai.GenerativeModel('gemma-3n-e2b-it')
