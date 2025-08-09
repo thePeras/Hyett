@@ -17,6 +17,7 @@ GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "").encode('utf-8')
 
 WORKING_DIR = "../project_luca/app"
 DIGEST_DIR = os.path.join(WORKING_DIR, 'lib')
+RULES_FILE = os.path.join(WORKING_DIR, 'rules.txt')
 
 g = Github(GITHUB_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
