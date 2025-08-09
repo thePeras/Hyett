@@ -5,7 +5,7 @@ import git
 import requests
 import octokit
 
-from configs import model, WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN
+from configs import WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN
 
 CODE_FORMAT = """
 IMPORTANT: Provide the full, updated content for each file that needs to be changed. Your response MUST strictly follow this format, including the start and end markers:
