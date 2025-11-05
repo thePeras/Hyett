@@ -1,10 +1,9 @@
-from helpers import log
 import os
 import re
 import json
 
-from configs import WORKING_DIR, GITHUB_TOKEN, gemini_model, flash_model, g, RULES_FILE
-from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes, fetch_image_from_url, get_issue_attachments, get_pr_template
+from configs import WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN, gemini_model, flash_model, g
+from helpers import apply_code_changes, get_code_ingest, get_updated_repo, CODE_FORMAT, push_code_changes, fetch_image_from_url, get_issue_attachments, get_pr_template, generate_directory_structure, get_file_content, log
 
 # --- Workflow 1: Handle New Issue Assignment ---
 def handle_issue_assigned(payload):
@@ -18,7 +17,62 @@ def handle_issue_assigned(payload):
         print(f"🚀 Starting work on issue #{issue_number}: {issue_title}")
 
         repo_path, repo = get_updated_repo(repo_clone_url)
-        code_context = get_code_ingest()
+
+        # STEP 1: Identify relevant files based on the directory structure and issue
+        log("Generating directory structure to identify relevant files...")
+        dir_structure = generate_directory_structure()
+
+        identify_files_prompt = f"""
+        You are an expert software developer planning a task. Based on the GitHub issue and the project's directory structure, identify which files are most likely relevant for context to resolve the issue.
+
+        ## GITHUB ISSUE:
+        - **Title:** {issue_title}
+        - **Description:** {issue_body}
+
+        ## DIRECTORY STRUCTURE:
+        {dir_structure}
+        ## Instructions:
+        Your response MUST be a single JSON object with a key "files" containing a list of file paths. The paths should be relative to the project root shown in the directory structure.
+
+        Example Response:
+        {{
+        "files": [
+            "services/api_service.dart",
+            "screens/user_profile_screen.dart"
+        ]
+        }}
+        """
+        log("Asking Gemini to identify relevant files for the task...")
+        files_response = flash_model.generate_content(identify_files_prompt)
+        
+        relevant_files = []
+        try:
+            json_match = re.search(r"\{.*\}", files_response.text, re.DOTALL)
+            if not json_match:
+                raise ValueError("No JSON object found in Gemini's response for relevant files.")
+            files_json = json.loads(json_match.group(0))
+            relevant_files = files_json.get("files", [])
+            if relevant_files:
+                log(f"Gemini identified {len(relevant_files)} relevant files: {', '.join(relevant_files)}")
+            else:
+                log("⚠️ Gemini did not identify any relevant files. Proceeding with an empty code context.")
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            log(f"⚠️ Error parsing Gemini's file selection response: {e}. Proceeding with an empty code context.")
+            
+        # STEP 2: Build a focused context from the content of relevant files
+        code_context_parts = []
+        if relevant_files:
+            log("Fetching content for relevant files...")
+            for file_path in relevant_files:
+                full_path = os.path.join(DIGEST_DIR, file_path.strip())
+                content = get_file_content(full_path)
+                if not content.startswith("Error:"):
+                    code_context_parts.append(f"--- START OF FILE: lib/{file_path.strip()} ---\n{content}\n--- END OF FILE: lib/{file_path.strip()} ---")
+                else:
+                    log(f"⚠️ Could not read file: {file_path}. Skipping.")
+        
+        code_context = "\n\n".join(code_context_parts)
+        
         pr_template = get_pr_template(repo_path)
 
         # Request Code Changes from Gemini
@@ -36,12 +90,6 @@ def handle_issue_assigned(payload):
         ## CODE:
         {code_context}
         """
-
-        with open(RULES_FILE, 'r') as f:
-            rules = f.read().strip()
-
-        if rules:
-            code_gen_prompt += f"\n\n## RULES:\n{rules}"
         
         attachments = get_issue_attachments(issue_number, repo_full_name)
         if attachments:
@@ -49,7 +97,7 @@ def handle_issue_assigned(payload):
 
         log("Sending request to Gemini for code generation...")
         gemini_request_contents = [code_gen_prompt] + attachments
-        response = gemini_model.generate_content(gemini_request_contents)
+        response = flash_model.generate_content(gemini_request_contents)
 
         log("Received response from Gemini. Applying changes to main branch locally...")
         apply_code_changes(repo_path, response.text)

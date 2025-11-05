@@ -5,7 +5,7 @@ import git
 import requests
 import octokit
 
-from configs import WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN
+from configs import WORKING_DIR, DIGEST_DIR, GITHUB_TOKEN, GEMINI_TOKEN_LIMIT
 
 CODE_FORMAT = """
 IMPORTANT: Provide the full, updated content for each file that needs to be changed. Your response MUST strictly follow this format, including the start and end markers:
@@ -92,7 +92,33 @@ def get_code_ingest():
     log("Ingested code from the '/lib' directory.")
 
     with open(digest_path, 'r', encoding='utf-8') as f:
-        return f.read()
+        full_context = f.read()
+
+    # TODO: A clever selection of the tokens
+    limited_context = limit_tokens(full_context, GEMINI_TOKEN_LIMIT)
+
+    return limited_context
+
+def generate_directory_structure():
+    if not os.path.isdir(DIGEST_DIR):
+        return f"Error: Directory not found at '{DIGEST_DIR}'"
+        
+    dir_structure = []
+    for dirpath, dirnames, filenames in os.walk(DIGEST_DIR):
+        for i, name in enumerate(filenames):
+            path = os.path.join(dirpath, name)
+            dir_structure.append(path.replace(DIGEST_DIR, ''))
+            
+    return "\n".join(dir_structure)
+
+def get_file_content(file_path):
+    if not os.path.exists(file_path):
+        return f"Error: File not found at '{file_path}'"
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    return content
 
 def get_updated_repo(repo_clone_url):
     repo_path = os.path.join(WORKING_DIR)
@@ -195,6 +221,19 @@ def get_pr_template(repo_path):
 
     log("No PR template found.")
     return None
+
+def limit_tokens(text, max_tokens):
+    """
+    Truncates text to stay within a specified token limit.
+    Uses a simple approximation: 1 token ~= 4 characters.
+    """
+    # A common approximation is that 1 token is roughly 4 characters
+    max_chars = max_tokens * 4
+    if len(text) > max_chars:
+        truncated_text = text[:max_chars]
+        log(f"⚠️  Context truncated from {len(text)} to {max_chars} characters to fit token limit.")
+        return truncated_text
+    return text
 
 def log(mylog):
     print("    - " + mylog)

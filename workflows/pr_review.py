@@ -2,7 +2,7 @@ import os
 import requests
 import git
 
-from configs import gemini_model, flash_model, WORKING_DIR, RULES_FILE
+from configs import gemini_model, flash_model, WORKING_DIR
 from helpers import apply_code_changes, get_code_ingest, log, get_updated_repo, CODE_FORMAT, push_code_changes
 
 # TODO: Check how to address line reviews

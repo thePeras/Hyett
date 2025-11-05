@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 from workflows.issue_assign import handle_issue_assigned
 from workflows.pr_review import handle_pr_review
 
+# import generate_directory_structure
+from helpers import generate_directory_structure
+
 app = FastAPI()
 
 @app.post("/webhook")
@@ -57,3 +60,5 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
         print(f"❌ Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+if __name__ == "__main__":
+    print(generate_directory_structure())
